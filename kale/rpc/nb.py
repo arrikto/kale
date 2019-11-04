@@ -1,7 +1,7 @@
 from kale.utils import pod_utils
 
 
-def list_volumes(args, logger):
+def list_volumes():
     volumes = pod_utils.list_volumes()
     volumes_out = [{"type": "clone",
                     "name": volume.name,
