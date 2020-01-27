@@ -20,6 +20,7 @@ from .resource_save import resource_save
 from .resource_load import resource_all as fallback_load
 from .resource_save import resource_all as fallback_save
 
+from packaging import version as pkg_version
 
 log = logging.getLogger(__name__)
 
@@ -133,3 +134,34 @@ def resource_keras_save(obj, path, **kwargs):
         obj.save(path + ".keras")
     except ImportError:
         fallback_save(obj, path, **kwargs)
+
+
+@resource_load.register(r'.*\.tfkeras')
+def resource_tf_keras_load(uri, **kwargs):
+    try:
+        import tensorflow
+    except ImportError:
+        print("Failed to load TensorFlow object: can not import TensorFlow")
+        return
+    print("Loading TensorFlow Keras model: {}".format(_get_obj_name(uri)))
+    if pkg_version.parse(tensorflow.__version__) < pkg_version.parse('2.0.0'):
+        raise NotImplementedError("Kale does not yet support marshalling"
+                                  " of models created with "
+                                  "'TensorFlow < 2.0.0'")
+    from tensorflow.keras.models import load_model
+    return load_model(uri)
+
+
+@resource_save.register(r'tensorflow\.python\.keras.*')
+def resource_tf_keras_save(obj, path, **kwargs):
+    try:
+        import tensorflow
+    except ImportError:
+        print("Failed to save TensorFlow object: can not import TensorFlow")
+        return
+    print("Saving TensorFlow Keras model: {}".format(_get_obj_name(path)))
+    if pkg_version.parse(tensorflow.__version__) < pkg_version.parse('2.0.0'):
+        raise NotImplementedError("Kale does not support marshalling of"
+                                  "objects from TensorFlow < 2.0.0")
+    obj.save(path + ".tfkeras", save_format='h5')
+
