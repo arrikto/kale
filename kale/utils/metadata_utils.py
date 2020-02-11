@@ -1,8 +1,13 @@
+import os
 import re
 import copy
+import json
 
 from kale.utils.utils import random_string
 from kale.utils.pod_utils import is_workspace_dir
+from jsonschema import Draft7Validator, RefResolver
+
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DEFAULT_METADATA = {
     'experiment_name': '',
@@ -33,8 +38,37 @@ VOLUME_TYPES = ('pv', 'pvc', 'new_pvc', 'clone')
 VOLUME_REQUIRED_FIELDS = ('name', 'annotations', 'size', 'type', 'mount_point')
 
 
-def parse_metadata(notebook_metadata):
-    """Parse the Notebook's metadata and update it when needed.
+def _validate_json_schema(data, schema, use_refs=False):
+    """Validates an object against a json schema.
+
+    Args:
+        data (dict): data to be validated against the jsonschema
+        schema (str): absolute path to the base schema
+        use_refs (bool): if True, load schemas following $refs from the same
+            folder fo the base schema
+    """
+    abs_path_to_schema = os.path.join(THIS_DIR,
+                                      '../schemas/{}'.format(schema))
+    with open(abs_path_to_schema, 'r') as fp:
+        schema = json.load(fp)
+
+    resolver = None
+    if use_refs:
+        resolver = RefResolver(
+            # Tell to this custom RefResolver where *this* schema lives
+            # in the filesystem.
+            # Note that `file:` is for unix systems.
+            base_uri='file:{}'.format(abs_path_to_schema),
+            referrer=schema
+        )
+    Draft7Validator.check_schema(schema)
+    validator = Draft7Validator(schema, resolver=resolver, format_checker=None)
+    # raises a jsonschema.exceptions.ValidationError in case of failure
+    validator.validate(data)
+
+
+def validate_metadata(notebook_metadata):
+    """Validate the Notebook's metadata and update it when needed.
 
     Args:
         notebook_metadata (dict): metadata annotated by Kale.
@@ -66,6 +100,13 @@ def parse_metadata(notebook_metadata):
         metadata.update({'volumes': _parse_volumes_metadata(volumes)})
     else:
         raise ValueError("Volumes spec must be a list")
+
+    katib_run = metadata.get('katib_run', False)
+    if not isinstance(katib_run, bool):
+        raise ValueError("katib_run must be a valid boolean")
+    if katib_run:
+        katib = metadata.get('katib_metadata', {})
+        metadata.update({'katib_metadata': _parse_katib_metadata(katib)})
     return metadata
 
 
@@ -132,3 +173,11 @@ def _parse_volumes_metadata(volumes):
                                key=lambda _v: is_workspace_dir(
                                    _v['mount_point']))
     return validated_volumes
+
+
+def _parse_katib_metadata(katib_metadata):
+    parsed_metadata = copy.deepcopy(katib_metadata)
+    # validate against json schema
+    schema_name = "katib_metadata.schema.json"
+    _validate_json_schema(parsed_metadata, schema_name, use_refs=True)
+    return parsed_metadata

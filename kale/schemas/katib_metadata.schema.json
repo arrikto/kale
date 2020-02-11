@@ -1,0 +1,26 @@
+{
+  "title": "Katib Metadata",
+  "type": "object",
+  "properties": {
+    "katib_parameters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "$ref": "katib_parameters.schema.json"
+      }
+    },
+    "katib_algorithm": {
+      "type": "object",
+      "$ref": "katib_algorithm.schema.json"
+    },
+    "katib_objective": {
+      "type": "object",
+      "$ref": "katib_objective.schema.json"
+    }
+  },
+  "required": [
+    "katib_parameters",
+    "katib_algorithm",
+    "katib_objective"
+  ]
+}

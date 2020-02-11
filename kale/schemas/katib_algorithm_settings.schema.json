@@ -1,0 +1,121 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "enum": [
+        "random_state",
+        "base_estimator",
+        "n_initial_points",
+        "acq_function",
+        "acq_optimizer"
+      ]
+    },
+    "value": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    }
+  },
+  "required": [
+    "name",
+    "value"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "name": {
+            "enum": [
+              "random_state"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "name": {
+            "enum": [
+              "base_estimator"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "enum": [
+              "GP",
+              "RF",
+              "ET",
+              "GBRT"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "name": {
+            "enum": [
+              "n_initial_points"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "name": {
+            "enum": [
+              "aqc_function"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "name": {
+            "enum": [
+              "aqc_optimizer"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}

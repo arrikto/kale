@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "definitions": {
+    "algorithmSettings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "$ref": "katib_algorithm_settings.schema.json"
+      }
+    },
+    "earlyStopping": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      }
+    }
+  },
+  "properties": {
+    "algorithmName": {
+      "enum": [
+        "random",
+        "grid",
+        "bayesianoptimization",
+        "hyperband",
+        "tpe"
+      ]
+    },
+    "algorithmSettings": {
+      "$ref": "#/definitions/algorithmSettings"
+    }
+  },
+  "required": [
+    "algorithmName"
+  ]
+}

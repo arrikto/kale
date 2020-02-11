@@ -96,3 +96,44 @@ def test_validate_metadata_missing_required():
 
     with pytest.raises(ValueError, match=r"Key pipeline_name not found.*"):
         metadata_utils.parse_metadata({'experiment_name': 'test'})
+
+
+
+
+def test_katib_jsonschema_validation():
+    mt = {
+        "katib_parameters": [
+            {
+                "name": "a",
+                "parameterType": "int",
+                "feasibleSpace": {
+                    "min": 2,
+                    "max": 10
+                }
+            },
+            {
+                "name": "b",
+                "parameterType": "double",
+                "feasibleSpace": {
+                    "min": 2,
+                    "max": 10,
+                    "step": 2
+                }
+            },
+            {
+                "name": "b",
+                "parameterType": "categorical",
+                "feasibleSpace": {
+                    "list": ['v1', 'v2']
+                }
+            }
+        ],
+        "katib_algorithm": {
+            "algorithmName": "random",
+        },
+        "katib_objective": {
+            "type": "minimize",
+            "objectiveMetricName": "metric"
+        }
+    }
+    metadata_utils._parse_katib_metadata(mt)

@@ -1,0 +1,129 @@
+{
+  "type": "object",
+  "definitions": {
+    "feasibleSpace": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": [
+            "integer",
+            "number"
+          ]
+        },
+        "max": {
+          "type": [
+            "integer",
+            "number"
+          ]
+        },
+        "step": {
+          "type": [
+            "integer"
+          ]
+        },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "parameterType": {
+      "enum": [
+        "unknown",
+        "double",
+        "int",
+        "categorical",
+        "discrete"
+      ]
+    },
+    "feasibleSpace": {
+      "$ref": "#/definitions/feasibleSpace"
+    }
+  },
+  "required": [
+    "name",
+    "parameterType",
+    "feasibleSpace"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "parameterType": {
+            "enum": [
+              "int",
+              "double"
+            ]
+          }
+        },
+        "required": [
+          "parameterType"
+        ]
+      },
+      "then": {
+        "properties": {
+          "feasibleSpace": {
+            "required": [
+              "min",
+              "max"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "parameterType": {
+            "enum": [
+              "categorical"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "feasibleSpace": {
+            "required": [
+              "list"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "parameterType": {
+            "const": "int"
+          }
+        },
+        "required": [
+          "parameterType"
+        ]
+      },
+      "then": {
+        "properties": {
+          "feasibleSpace": {
+            "properties": {
+              "min": {
+                "type": "integer"
+              },
+              "max": {
+                "type": "integer"
+              }
+            },
+            "required": ["min", "max"]
+          }
+        }
+      }
+    }
+  ]
+}

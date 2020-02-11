@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "properties": {
+    "goal": {
+      "type": "number"
+    },
+    "objectiveMetricName": {
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "maximize",
+        "minimize"
+      ]
+    },
+    "additionalMetricNames": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "type",
+    "objectiveMetricName"
+  ]
+}
