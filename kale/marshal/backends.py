@@ -149,3 +149,24 @@ def resource_tf_keras_save(obj, path, **kwargs):
                                   "objects from TensorFlow < 2.0.0")
     obj.save(path + ".tfkeras", save_format='h5')
 
+
+
+
+@resource_load.register(r'.*\.tfhub')
+def resource_tf_hub_load(uri, **kwargs):
+    print("Loading TF Hub Module: {}".format(_get_obj_name(uri)))
+    import tensorflow_hub as hub
+    module = hub.load('path')
+    return module
+
+
+@resource_save.register(r"tensorflow_hub\.module\.Module")
+def resource_tf_hub_save(obj, path, **kwargs):
+    print("Saving TF Hub Module: {}".format(_get_obj_name(path)))
+    import tensorflow as tf
+    sess = tf.compat.v1.Session()
+    # need to initialise the variables inside the Module
+    init = tf.global_variables_initializer()
+    sess.run(init)
+    obj.export(path, sess)
+
