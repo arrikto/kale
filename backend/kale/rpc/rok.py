@@ -13,8 +13,10 @@
 #  limitations under the License.
 
 import os
+import math
 import copy
 import logging
+import kubernetes
 
 from kale.utils import pod_utils
 from kale.rpc.errors import (RPCNotFoundError, RPCServiceUnavailableError)
@@ -66,6 +68,53 @@ def snapshot_notebook(request, bucket=DEFAULT_BUCKET, obj=None):
     # Create the bucket in case it does not exist
     pod_utils.create_rok_bucket(bucket, client=rok)
     return rok.version_register(bucket, obj, "jupyter", params)
+
+
+def snapshot_pvc(request, pvc_name, bucket=DEFAULT_BUCKET):
+    rok = _get_client()
+    namespace = pod_utils.get_namespace()
+    commit_title = "Snapshot of PVC {}".format(pvc_name)
+    commit_message = "Snapshot of PVC {} for an InferenceServer".format(
+        pvc_name)
+    params = {"dataset": pvc_name,
+              "namespace": namespace,
+              "commit_title": commit_title,
+              "commit_message": commit_message}
+    # Create the bucket in case it does not exist
+    pod_utils.create_rok_bucket(bucket, client=rok)
+    return rok.version_register(bucket, pvc_name, "dataset", params)
+
+
+def hydrate_pvc_from_snapshot(request, obj, version, new_pvc_name,
+                              bucket=DEFAULT_BUCKET):
+    rok = _get_client()
+    version_info = rok.version_info(bucket, obj, version)
+    # size of the snapshot in Gi
+    size = math.ceil(int(version_info['content_length']) / 1024 / 1024 / 1024)
+    rok_url = version_info['rok_url']
+
+    # todo: kubernetes python client v11 have a
+    #  kubernetes.utils.create_from_dict that would make it much more nicer
+    #  here. (KFP support kubernetes <= 10)
+    pvc = kubernetes.client.V1PersistentVolumeClaim(
+        api_version="v1",
+        metadata=kubernetes.client.V1ObjectMeta(
+            annotations={"rok/creds-secret-name": "rok-secret-user",
+                         "rok/origin": rok_url},
+            name=new_pvc_name
+        ),
+        spec=kubernetes.client.V1PersistentVolumeClaimSpec(
+            storage_class_name="rok",
+            access_modes=["ReadWriteOnce"],
+            resources=kubernetes.client.V1ResourceRequirements(
+                requests={"storage": "{}Gi".format(size)}
+            )
+        )
+    )
+    api = kubernetes.client.CoreV1Api()
+    ns = pod_utils.get_namespace()
+    ns_pvc = api.create_namespaced_persistent_volume_claim(ns, pvc)
+    return {"name": ns_pvc.metadata.name}
 
 
 def _get_group_members(info):
