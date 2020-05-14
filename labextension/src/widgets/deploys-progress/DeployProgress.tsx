@@ -26,6 +26,7 @@ import SkippedIcon from '@material-ui/icons/SkipNext';
 import SuccessIcon from '@material-ui/icons/CheckCircle';
 import CancelIcon from '@material-ui/icons/Cancel';
 import WarningIcon from '@material-ui/icons/Warning';
+import InfoIcon from '@material-ui/icons/Info';
 
 import StatusRunning from '../../icons/statusRunning';
 import TerminatedIcon from '../../icons/statusTerminated';
@@ -99,6 +100,20 @@ export const DeployProgress: React.FunctionComponent<DeployProgress> = props => 
         }}
       >
         <WarningIcon style={{ color: color.alert, height: 18, width: 18 }} />
+      </a>
+    ) : (
+      ''
+    );
+  };
+
+  const getInfoBadge = (title: string, content: any) => {
+    return content ? (
+      <a
+        onClick={_ => {
+          NotebookUtils.showMessage(title, content);
+        }}
+      >
+        <InfoIcon style={{ color: color.blue, height: 18, width: 18 }} />
       </a>
     ) : (
       ''
@@ -476,6 +491,30 @@ export const DeployProgress: React.FunctionComponent<DeployProgress> = props => 
     );
   }
 
+  let newPvcTpl;
+  if (props.hydratePvcTask === true) {
+    newPvcTpl = (
+      <SuccessIcon style={{ color: color.success, height: 18, width: 18 }} />
+    );
+  } else {
+    newPvcTpl = (
+      <ErrorIcon style={{ color: color.errorText, height: 18, width: 18 }} />
+    );
+  }
+
+  let newInfs;
+  if (props.inferenceServiceSuccess === undefined) {
+    newInfs = <LinearProgress color="primary" />;
+  } else if (props.inferenceServiceSuccess === true) {
+    newInfs = (
+      <SuccessIcon style={{ color: color.success, height: 18, width: 18 }} />
+    );
+  } else {
+    newInfs = (
+      <ErrorIcon style={{ color: color.errorText, height: 18, width: 18 }} />
+    );
+  }
+
   return (
     <div className="deploy-progress">
       <div
@@ -563,6 +602,27 @@ export const DeployProgress: React.FunctionComponent<DeployProgress> = props => 
             <div className="deploy-progress-value">{katibTpl}</div>
           </div>
           <div className="deploy-progress-row">{katibRunsTpl}</div>
+        </div>
+      ) : null}
+
+      {props.hydratePvcTask !== undefined ? (
+        <div className="deploy-progress-row">
+          <div className="deploy-progress-label">
+            Creating new PVC from snapshot...
+          </div>
+          <div className="deploy-progress-value">{newPvcTpl}</div>
+        </div>
+      ) : null}
+
+      {props.inferenceServiceCreating ? (
+        <div className="deploy-progress-row">
+          <div className="deploy-progress-label">
+            Creating InferenceService...
+          </div>
+          <div className="deploy-progress-value">
+            {newInfs}
+            {getInfoBadge('InferenceService Info', props.InferenceServiceInfo)}
+          </div>
         </div>
       ) : null}
     </div>

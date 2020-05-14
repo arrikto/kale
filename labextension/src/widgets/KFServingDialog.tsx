@@ -26,20 +26,24 @@ import {
 import { Header } from '../components/DialogTitle';
 import { FormInput } from '../components/FormInput';
 
+export interface KFServingFormData {
+  name: string;
+  image: string;
+  port: number;
+  endpoint: string;
+  modelPath: string;
+}
+
 interface KFServingDialog {
   open: boolean;
   toggleDialog: Function;
-  // runInferenceService: Function;
+  runInferenceService: Function;
 }
 
-export const KFServingDialog: React.FunctionComponent<KFServingDialog> = props => {
+const KFServingDialog: React.FunctionComponent<KFServingDialog> = props => {
   const { register, handleSubmit, errors, triggerValidation } = useForm({
     mode: 'onChange',
   });
-
-  const onSubmit = (data: any) => {
-    // props.runInferenceService(data);
-  };
 
   React.useEffect(() => {
     // Run a validation when the dialog opens on the pre-filled/default values.
@@ -52,7 +56,12 @@ export const KFServingDialog: React.FunctionComponent<KFServingDialog> = props =
     }
   }, [props.open]);
 
-  const handleClose = () => {
+  const onSubmit = (data: any) => {
+    props.toggleDialog();
+    props.runInferenceService(data);
+  };
+
+  const onCancel = () => {
     props.toggleDialog();
   };
 
@@ -109,7 +118,7 @@ export const KFServingDialog: React.FunctionComponent<KFServingDialog> = props =
         />
         <FormInput
           variant="outlined"
-          name="path"
+          name="modelPath"
           label="Model Path"
           defaultValue=""
           error={!!errors?.path}
@@ -118,7 +127,7 @@ export const KFServingDialog: React.FunctionComponent<KFServingDialog> = props =
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} color="primary">
+        <Button onClick={onCancel} color="primary">
           Cancel
         </Button>
         <Button onClick={handleSubmit(onSubmit)} color="primary">
@@ -128,3 +137,5 @@ export const KFServingDialog: React.FunctionComponent<KFServingDialog> = props =
     </Dialog>
   );
 };
+
+export default KFServingDialog;

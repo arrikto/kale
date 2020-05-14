@@ -42,6 +42,10 @@ export type DeployProgressState = {
   showKatibKFPExperiment?: boolean;
   katibKFPExperiment?: { id: string; name: string };
   deleted?: boolean;
+  hydratePvcTask?: boolean;
+  inferenceServiceCreating?: boolean;
+  inferenceServiceSuccess?: boolean;
+  InferenceServiceInfo?: any;
   docManager?: IDocumentManager;
 };
 
@@ -80,6 +84,10 @@ export const DeploysProgress: React.FunctionComponent<DeploysProgress> = props =
             katib={dpState.katib}
             showKatibKFPExperiment={dpState.showKatibKFPExperiment}
             katibKFPExperiment={dpState.katibKFPExperiment}
+            hydratePvcTask={dpState.hydratePvcTask}
+            inferenceServiceCreating={dpState.inferenceServiceCreating}
+            inferenceServiceSuccess={dpState.inferenceServiceSuccess}
+            InferenceServiceInfo={dpState.InferenceServiceInfo}
             onRemove={_onPanelRemove(+index)}
             docManager={dpState.docManager}
           />

@@ -54,7 +54,7 @@ import { KatibDialog } from './KatibDialog';
 import { Input } from '../components/Input';
 import { LightTooltip } from '../components/LightTooltip';
 import { wait } from '../lib/Utils';
-import { KFServingDialog } from './KFServingDialog';
+import KFServingDialog, { KFServingFormData } from './KFServingDialog';
 
 const KALE_NOTEBOOK_METADATA_KEY = 'kubeflow_notebook';
 
@@ -961,6 +961,141 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
     this.setState({ runDeployment: false });
   };
 
+  runInferenceService = async (data: KFServingFormData) => {
+    this.setState({ runDeployment: true });
+    const _deployIndex = ++deployIndex;
+
+    // get the pvc to clone
+    let pvcToClone;
+    try {
+      pvcToClone = await _legacy_executeRpcAndShowRPCError(
+        this.getActiveNotebook(),
+        this.props.kernel,
+        'nb.get_volume_containing_path',
+        { path: data.modelPath },
+      );
+    } catch (error) {
+      this.setState({ runDeployment: false });
+      throw error;
+    }
+
+    if (!pvcToClone) {
+      this.setState({ runDeployment: false });
+      return;
+    }
+
+    // snapshot pvc
+    const showSnapshotProgress = true;
+    const snapshot = await _legacy_executeRpcAndShowRPCError(
+      this.getActiveNotebook(),
+      this.props.kernel,
+      'rok.snapshot_pvc',
+      { pvc_name: pvcToClone['name'] },
+    );
+    const taskId = snapshot.task.id;
+    let task = await this.getSnapshotProgress(taskId);
+    this.updateDeployProgress(_deployIndex, { task, showSnapshotProgress });
+
+    while (!['success', 'error', 'canceled'].includes(task.status)) {
+      task = await this.getSnapshotProgress(taskId, 1000);
+      this.updateDeployProgress(_deployIndex, { task });
+    }
+
+    if (['error', 'canceled'].includes(task.status)) {
+      this.setState({ runDeployment: false });
+      return;
+    }
+
+    // hydrate new pvc from snapshot
+    const newPvc = await _legacy_executeRpcAndShowRPCError(
+      this.getActiveNotebook(),
+      this.props.kernel,
+      'rok.hydrate_pvc_from_snapshot',
+      {
+        obj: task.result.event.object,
+        version: task.result.event.version,
+        new_pvc_name: data.name + '-pvc',
+      },
+    );
+    if (!newPvc) {
+      this.setState({ runDeployment: false });
+      this.updateDeployProgress(_deployIndex, { hydratePvcTask: false });
+      return;
+    }
+    this.updateDeployProgress(_deployIndex, { hydratePvcTask: true });
+
+    // create inferenceservice
+    const relativeModelPath = data.modelPath.replace(
+      pvcToClone['mount_point'],
+      '',
+    );
+    this.updateDeployProgress(_deployIndex, { inferenceServiceCreating: true });
+    const inferenceServiceCRPath = await _legacy_executeRpcAndShowRPCError(
+      this.getActiveNotebook(),
+      this.props.kernel,
+      'kfserving.create_inference_service',
+      {
+        cr_args: {
+          name: data.name,
+          image: data.image,
+          port: data.port,
+          pvc_name: newPvc['name'],
+          model_path: relativeModelPath,
+        },
+      },
+    );
+    if (!inferenceServiceCRPath) {
+      this.updateDeployProgress(_deployIndex, {
+        inferenceServiceSuccess: false,
+      });
+      this.setState({ runDeployment: false });
+      return;
+    }
+    // monitor until ready
+    this.pollInferenceSService(_deployIndex, data.name, data.endpoint);
+  };
+
+  pollInferenceSService(
+    _deployIndex: number,
+    inferenceServiceName: string,
+    endpoint: string,
+  ) {
+    _legacy_executeRpcAndShowRPCError(
+      this.getActiveNotebook(),
+      this.props.kernel,
+      'kfserving.get_inference_service',
+      {
+        name: inferenceServiceName,
+      },
+    ).then(infs => {
+      if (infs && infs['host']) {
+        const infoContent = [
+          'You can send a request to the new InferenceService with the' +
+            ' following request (from inside a Pod that has access to the' +
+            ' cluster-local-gateway):',
+          `<pre>curl -vik http://cluster-local-gateway.istio-system/${endpoint}
+       -H "Host: ${infs['host']}" -H "Content-Type: application/json"
+       -X POST -d ''</pre>`,
+        ];
+        this.updateDeployProgress(_deployIndex, {
+          inferenceServiceSuccess: true,
+          InferenceServiceInfo: infoContent,
+        });
+        this.setState({ runDeployment: false });
+        return;
+      }
+      setTimeout(
+        () =>
+          this.pollInferenceSService(
+            _deployIndex,
+            inferenceServiceName,
+            endpoint,
+          ),
+        3000,
+      );
+    });
+  }
+
   pollRun(_deployIndex: number, runPipeline: any) {
     _legacy_executeRpcAndShowRPCError(
       this.getActiveNotebook(),
@@ -1419,6 +1554,7 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
           <KFServingDialog
             open={this.state.kfservingDialog}
             toggleDialog={this.toggleKFServingDialog}
+            runInferenceService={this.runInferenceService}
           />
         </div>
       </ThemeProvider>
