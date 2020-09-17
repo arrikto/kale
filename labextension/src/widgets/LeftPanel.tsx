@@ -40,6 +40,7 @@ import Commands from '../lib/Commands';
 import { IAnnotation } from '../components/AnnotationInput';
 import { ISelectOption } from '../components/Select';
 import { PageConfig } from '@jupyterlab/coreutils';
+import KFServingDialog from './KFServingDialog';
 
 const KALE_NOTEBOOK_METADATA_KEY = 'kubeflow_notebook';
 
@@ -75,6 +76,7 @@ interface IState {
   deploys: { [index: number]: DeployProgressState };
   isEnabled: boolean;
   katibDialog: boolean;
+  kfservingDialog: boolean;
 }
 
 // Katib types: https://github.com/kubeflow/katib/blob/master/pkg/apis/controller/experiments/v1alpha3/experiment_types.go
@@ -202,6 +204,7 @@ export const DefaultState: IState = {
   deploys: {},
   isEnabled: false,
   katibDialog: false,
+  kfservingDialog: false,
 };
 
 let deployIndex = 0;
@@ -328,6 +331,10 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
       // close
       this.setState({ katibDialog: false });
     }
+  };
+
+  toggleKFServingDialog = () => {
+    this.setState({ kfservingDialog: !this.state.kfservingDialog });
   };
 
   // restore state to default values
@@ -864,6 +871,19 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
                   Set Up Katib Job
                 </Button>
               </div>
+
+              <div className="input-container add-button">
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="small"
+                  title="SetupKFServingJob"
+                  onClick={this.toggleKFServingDialog}
+                  style={{ marginLeft: '10px', marginTop: '0px' }}
+                >
+                  Run KFServing
+                </Button>
+              </div>
             </div>
 
             <div className={this.state.isEnabled ? '' : 'hidden'}>
@@ -919,6 +939,11 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
             }
             updateKatibMetadata={this.updateKatibMetadata}
             kernel={this.props.kernel}
+          />
+
+          <KFServingDialog
+            open={this.state.kfservingDialog}
+            toggleDialog={this.toggleKFServingDialog}
           />
         </div>
       </ThemeProvider>
