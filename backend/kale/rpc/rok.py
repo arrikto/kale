@@ -32,6 +32,16 @@ def snapshot_notebook(request, bucket=rokutils.DEFAULT_BUCKET, obj=None):
     return rokutils.snapshot_notebook(bucket, obj)
 
 
+def snapshot_pvc(request, pvc_name, bucket=rokutils.DEFAULT_BUCKET):
+    """Perform a snapshot over a PVC."""
+    return rokutils.snapshot_pvc(pvc_name, bucket)
+
+
+def hydrate_pvc(request, obj, version, new_pvc_name):
+    """Hydrate a PVC from a Rok snapshot."""
+    return rokutils.hydrate_pvc_from_snapshot(obj, version, new_pvc_name)
+
+
 def replace_cloned_volumes(request, bucket, obj, version, volumes):
     """Replace the volumes to be cloned with a Rok snapshot."""
     return rokutils.replace_cloned_volumes(bucket, obj, version, volumes)

@@ -14,7 +14,9 @@
 
 import copy
 import time
+import math
 import logging
+import kubernetes
 
 from progress.bar import IncrementalBar
 
@@ -45,6 +47,22 @@ def get_rok_client():
         _client = RokClient()
 
     return _client
+
+
+def snapshot_pvc(pvc_name, bucket=DEFAULT_BUCKET):
+    """Perform a snapshot over a PVC."""
+    rok = get_rok_client()
+    namespace = podutils.get_namespace()
+    commit_title = "Snapshot of PVC {}".format(pvc_name)
+    commit_message = "Snapshot of PVC {} for an InferenceServer".format(
+        pvc_name)
+    params = {"dataset": pvc_name,
+              "namespace": namespace,
+              "commit_title": commit_title,
+              "commit_message": commit_message}
+    # Create the bucket in case it does not exist
+    podutils.create_rok_bucket(bucket, client=rok)
+    return rok.version_register(bucket, pvc_name, "dataset", params)
 
 
 def snapshot_pod(bucket=DEFAULT_BUCKET):
@@ -161,3 +179,36 @@ def _get_cloned_volume(volume, obj_name, members):
     msg = "Volume '{}' not found in group '{}'".format(volume['name'],
                                                        obj_name)
     raise ValueError(msg)
+
+
+def hydrate_pvc_from_snapshot(obj, version, new_pvc_name,
+                              bucket=DEFAULT_BUCKET):
+    """Create a new PVC out of a Rok snapshot."""
+    rok = get_rok_client()
+    version_info = rok.version_info(bucket, obj, version)
+    # size of the snapshot in Gi
+    size = math.ceil(int(version_info['content_length']) / 1024 / 1024 / 1024)
+    rok_url = version_info['rok_url']
+
+    # todo: kubernetes python client v11 have a
+    #  kubernetes.utils.create_from_dict that would make it much more nicer
+    #  here. (KFP support kubernetes <= 10)
+    pvc = kubernetes.client.V1PersistentVolumeClaim(
+        api_version="v1",
+        metadata=kubernetes.client.V1ObjectMeta(
+            annotations={"rok/creds-secret-name": "rok-secret-user",
+                         "rok/origin": rok_url},
+            name=new_pvc_name
+        ),
+        spec=kubernetes.client.V1PersistentVolumeClaimSpec(
+            storage_class_name="rok",
+            access_modes=["ReadWriteOnce"],
+            resources=kubernetes.client.V1ResourceRequirements(
+                requests={"storage": "{}Gi".format(size)}
+            )
+        )
+    )
+    api = kubernetes.client.CoreV1Api()
+    ns = podutils.get_namespace()
+    ns_pvc = api.create_namespaced_persistent_volume_claim(ns, pvc)
+    return {"name": ns_pvc.metadata.name}
