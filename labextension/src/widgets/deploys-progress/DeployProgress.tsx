@@ -78,6 +78,13 @@ export const DeployProgress: React.FunctionComponent<DeployProgress> = props => 
     return `${window.location.origin}/_/pipeline/#/runs/details/${pipeline.id}`;
   };
 
+  const getInferenceServiceLink = (inf: any) => {
+    if (!inf.name) {
+      return '#';
+    }
+    return `${window.location.origin}/_/models/${inf.name}`;
+  };
+
   const getRunText = (pipeline: any) => {
     switch (pipeline.status) {
       case null:
@@ -340,6 +347,66 @@ export const DeployProgress: React.FunctionComponent<DeployProgress> = props => 
     );
   }
 
+  let newPvcTpl;
+  if (props.hydratePvcTask === true) {
+    newPvcTpl = (
+      <SuccessIcon
+        style={{ color: DeployUtils.color.success, height: 18, width: 18 }}
+      />
+    );
+  } else {
+    newPvcTpl = (
+      <ErrorIcon
+        style={{ color: DeployUtils.color.errorText, height: 18, width: 18 }}
+      />
+    );
+  }
+
+  let newInfSTpl;
+  if (props.inferenceServiceCreation) {
+    newInfSTpl = (
+      <React.Fragment>
+        <a
+          href={getInferenceServiceLink(props.inferenceServiceCreation)}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          View
+          <SuccessIcon
+            style={{ color: DeployUtils.color.success, height: 18, width: 18 }}
+          />
+        </a>
+      </React.Fragment>
+    );
+  } else if (props.inferenceServiceCreation == false) {
+    newInfSTpl = (
+      <React.Fragment>
+        <ErrorIcon
+          style={{ color: DeployUtils.color.errorText, height: 18, width: 18 }}
+        />
+      </React.Fragment>
+    );
+  } else {
+    newInfSTpl = <LinearProgress color="primary" />;
+  }
+
+  let monitorInfSTpl;
+  if (props.inferenceServiceMonitoring) {
+    monitorInfSTpl = (
+      <React.Fragment>
+        <SuccessIcon
+          style={{ color: DeployUtils.color.success, height: 18, width: 18 }}
+        />
+        {DeployUtils.getInfoBadge(
+          'InferenceService Info',
+          props.inferenceServiceMonitoring.info,
+        )}
+      </React.Fragment>
+    );
+  } else {
+    monitorInfSTpl = <LinearProgress color="primary" />;
+  }
+
   return (
     <div className="deploy-progress">
       <div
@@ -429,6 +496,33 @@ export const DeployProgress: React.FunctionComponent<DeployProgress> = props => 
 
       {props.showKatibProgress ? (
         <KatibProgress experiment={props.katib} />
+      ) : null}
+
+      {props.hydratePvcTask !== undefined ? (
+        <div className="deploy-progress-row">
+          <div className="deploy-progress-label">
+            Creating new PVC from snapshot...
+          </div>
+          <div className="deploy-progress-value">{newPvcTpl}</div>
+        </div>
+      ) : null}
+
+      {props.showInfSCreationProgress ? (
+        <div className="deploy-progress-row">
+          <div className="deploy-progress-label">
+            Creating InferenceService...
+          </div>
+          <div className="deploy-progress-value">{newInfSTpl}</div>
+        </div>
+      ) : null}
+
+      {props.showInfSMonitoringProgress ? (
+        <div className="deploy-progress-row">
+          <div className="deploy-progress-label">
+            Waiting for InfService to become ready...
+          </div>
+          <div className="deploy-progress-value">{monitorInfSTpl}</div>
+        </div>
       ) : null}
     </div>
   );

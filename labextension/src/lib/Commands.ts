@@ -89,6 +89,15 @@ export default class Commands {
     );
   };
 
+  snapshotPVC = async (pvc_name: string) => {
+    return await _legacy_executeRpcAndShowRPCError(
+      this._notebook,
+      this._kernel,
+      'rok.snapshot_pvc',
+      { pvc_name },
+    );
+  };
+
   getSnapshotProgress = async (task_id: string, ms?: number) => {
     const task = await _legacy_executeRpcAndShowRPCError(
       this._notebook,
@@ -104,9 +113,14 @@ export default class Commands {
     return task;
   };
 
-  runSnapshotProcedure = async (onUpdate: Function) => {
+  runSnapshotProcedure = async (onUpdate: Function, pvcName: string = null) => {
     const showSnapshotProgress = true;
-    const snapshot = await this.snapshotNotebook();
+    const snapshot = pvcName
+      ? await this.snapshotPVC(pvcName)
+      : await this.snapshotNotebook();
+    if (!snapshot) {
+      return null;
+    }
     const taskId = snapshot.task.id;
     let task = await this.getSnapshotProgress(taskId);
     onUpdate({ task, showSnapshotProgress });
@@ -126,8 +140,23 @@ export default class Commands {
       console.error('Snapshotting canceled');
       console.error('Stopping the deployment...');
     }
-
     return null;
+  };
+
+  hydratePVC = async (
+    obj: any,
+    version: any,
+    new_pvc_name: string,
+    onUpdate: Function,
+  ) => {
+    const newPVC = await _legacy_executeRpcAndShowRPCError(
+      this._notebook,
+      this._kernel,
+      'rok.hydrate_pvc',
+      { obj, version, new_pvc_name },
+    );
+    onUpdate({ hydratePvcTask: !!newPVC });
+    return newPVC;
   };
 
   replaceClonedVolumes = async (
@@ -591,4 +620,82 @@ export default class Commands {
       return labels;
     }
   };
+
+  getVolumeContainingPath = async (path: string) => {
+    return await _legacy_executeRpcAndShowRPCError(
+      this._notebook,
+      this._kernel,
+      'nb.get_volume_containing_path',
+      { path },
+    );
+  };
+
+  createInferenceService = async (
+    name: string,
+    model_path: string,
+    predictor: string,
+    pvc_name: string,
+    image: string,
+    port: number,
+    onUpdate: Function,
+  ) => {
+    onUpdate({ showInfSCreationProgress: true });
+    const inferenceServiceCRPath = await _legacy_executeRpcAndShowRPCError(
+      this._notebook,
+      this._kernel,
+      'serve.create_inference_service',
+      { name, predictor, pvc_name, model_path, image, port },
+    );
+    inferenceServiceCRPath
+      ? onUpdate({ inferenceServiceCreation: { name } })
+      : onUpdate({ inferenceServiceCreation: false });
+    return inferenceServiceCRPath;
+  };
+
+  pollInferenceService(
+    inferenceServiceName: string,
+    endpoint: string,
+    onUpdate: Function,
+  ) {
+    onUpdate({ showInfSMonitoringProgress: true });
+    _legacy_executeRpcAndShowRPCError(
+      this._notebook,
+      this._kernel,
+      'serve.get_inference_service',
+      {
+        name: inferenceServiceName,
+      },
+    ).then(infs => {
+      // The InferenceService is ready when if has a condition of type "Ready"
+      // with status "True".
+      const isReady = (inferenceService: any) => {
+        return !!inferenceService?.status?.conditions
+          .filter((x: any) => x.type == 'Ready')
+          .filter((x: any) => x.status == 'True').length;
+      };
+
+      // Use the "default" predictor. We don't care about the "canary" for now.
+      const getHost = (inferenceService: any) => {
+        return inferenceService.status.default.predictor.host;
+      };
+
+      if (isReady(infs)) {
+        const info = [
+          'You can send a request to the new InferenceService with the' +
+            ' following request (from inside a Pod that has access to the' +
+            ' cluster-local-gateway):',
+          `<pre>curl -vik http://cluster-local-gateway.istio-system/${endpoint}
+       -H "Host: ${getHost(infs)}" -H "Content-Type: application/json"
+       -X POST -d ''</pre>`,
+        ];
+        onUpdate({ inferenceServiceMonitoring: { info } });
+        return;
+      }
+      setTimeout(
+        () =>
+          this.pollInferenceService(inferenceServiceName, endpoint, onUpdate),
+        3000,
+      );
+    });
+  }
 }

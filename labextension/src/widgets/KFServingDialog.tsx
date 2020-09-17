@@ -39,7 +39,7 @@ export interface KFServingFormData {
 interface KFServingDialog {
   open: boolean;
   toggleDialog: Function;
-  // runInferenceService: Function;
+  runInferenceService: Function;
 }
 
 const PREDICTOR_VALUES = [
@@ -82,7 +82,7 @@ const KFServingDialog: React.FunctionComponent<KFServingDialog> = props => {
 
   const onSubmit = (data: any) => {
     props.toggleDialog();
-    // props.runInferenceService(data);
+    props.runInferenceService(data);
   };
 
   const onCancel = () => {

@@ -40,7 +40,7 @@ import Commands from '../lib/Commands';
 import { IAnnotation } from '../components/AnnotationInput';
 import { ISelectOption } from '../components/Select';
 import { PageConfig } from '@jupyterlab/coreutils';
-import KFServingDialog from './KFServingDialog';
+import KFServingDialog, { KFServingFormData } from './KFServingDialog';
 
 const KALE_NOTEBOOK_METADATA_KEY = 'kubeflow_notebook';
 
@@ -700,6 +700,66 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
     this.setState({ runDeployment: false });
   };
 
+  runInferenceService = async (data: KFServingFormData) => {
+    const commands = new Commands(this.getActiveNotebook(), this.props.kernel);
+    const _deployIndex = ++deployIndex;
+    const _updateDeployProgress = (x: DeployProgressState) => {
+      this.updateDeployProgress(_deployIndex, x);
+    };
+
+    const pvcToClone = await commands.getVolumeContainingPath(data.modelPath);
+    if (!pvcToClone) {
+      this.setState({ runDeployment: false });
+      return;
+    }
+
+    const task = await commands.runSnapshotProcedure(
+      _updateDeployProgress,
+      pvcToClone['name'],
+    );
+    console.log(task);
+    if (!task) {
+      this.setState({ runDeployment: false });
+      return;
+    }
+
+    const newPVC = await commands.hydratePVC(
+      task.result.event.object,
+      task.result.event.version,
+      data.name +
+        '-' +
+        Math.random()
+          .toString(36)
+          .slice(2, 7) +
+        '-pvc',
+      _updateDeployProgress,
+    );
+    if (!newPVC) {
+      this.setState({ runDeployment: false });
+      return;
+    }
+
+    const relPath = data.modelPath.replace(pvcToClone['mount_point'], '');
+    const inferenceServiceCRPath = await commands.createInferenceService(
+      data.name,
+      relPath,
+      data.predictor,
+      newPVC['name'],
+      data?.image || '',
+      data?.port || 0,
+      _updateDeployProgress,
+    );
+    if (!inferenceServiceCRPath) {
+      this.setState({ runDeployment: false });
+      return;
+    }
+
+    // If not using a custom predictor, the endpoint has a standard format.
+    const endpoint = data?.endpoint || '/v1/models/' + data.name + ':predict';
+    commands.pollInferenceService(data.name, endpoint, _updateDeployProgress);
+    this.setState({ runDeployment: false });
+  };
+
   onMetadataEnable = (isEnabled: boolean) => {
     this.setState({ isEnabled });
   };
@@ -944,6 +1004,7 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
           <KFServingDialog
             open={this.state.kfservingDialog}
             toggleDialog={this.toggleKFServingDialog}
+            runInferenceService={this.runInferenceService}
           />
         </div>
       </ThemeProvider>
