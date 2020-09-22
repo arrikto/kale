@@ -63,6 +63,15 @@ _STEPS_DEFAULTS_LANGUAGE = [ANNOTATION_TAG,
                             LABEL_TAG,
                             LIMITS_TAG]
 
+# FIXME: Move this to a base processor class
+# Code to be run as part of the 'serve' pipeline step
+# The `name` and `predictor` arguments are rendered as string, while `model`
+# will be the marshaled variables from a previous step.
+SERVING_STEP_SOURCE = """\
+from kale.common import serveutils as _kale_serveutils
+_kale_serveutils.serve('%s', %s, '%s')
+"""
+
 
 def get_annotation_or_label_from_tag(tag_parts):
     """Get the key and value from an annotation or label tag.
@@ -205,6 +214,22 @@ class NotebookProcessor:
         )
         dependencies.assign_metrics(self.pipeline, pipeline_metrics)
 
+        # FIXME: Move this to a base class Processor, to be executed by default
+        #  after `to_pipeline`, so that it is agnostic to the type of
+        #  processor.
+        leaf_steps = self.pipeline.get_leaf_steps()
+        if self.config.serving_run:
+            _name = "serve"
+            _code = (SERVING_STEP_SOURCE %
+                     (self.config.pipeline_name,
+                      self.config.serving_metadata.model,
+                      self.config.serving_metadata.predictor))
+            self.pipeline.add_step(Step(name=_name, source=[_code]))
+            # add a link from all the last steps of the pipeline to
+            # the final serving one.
+            for step in leaf_steps:
+                self.pipeline.add_edge(step.name, _name)
+
         # if there are multiple DAG leaves, add an empty step at the end of the
         # pipeline for final snapshot
         leaf_steps = self.pipeline.get_leaf_steps()
@@ -216,12 +241,10 @@ class NotebookProcessor:
             for step in leaf_steps:
                 self.pipeline.add_edge(step.name, _name)
 
-        # FIXME: Move this to a base class Processor, to be executed by default
-        #  after `to_pipeline`, so that it is agnostic to the type of
-        #  processor.
         for step in self.pipeline.steps:
             step.config.update(self.pipeline.config.steps_defaults,
                                patch=False)
+        # FIXME: Until this ^ -------------------------------------------------
 
         # TODO: Additional action required:
         #  Run a static analysis over every step to check that pipeline
