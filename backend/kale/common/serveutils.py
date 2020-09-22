@@ -73,20 +73,24 @@ def serve(name, model, predictor):
     - Submit an InferenceService CR
     - Monitor the CR until it becomes ready
     """
+    log.info("Starting serve procedure for model '%s'" % model)
     # We should always have a "workspace" volume mounted under HOME
     homedir = os.environ.get("HOME")
     volume = podutils.get_volume_containing_path(homedir)
     volume_name = volume[1].persistent_volume_claim.claim_name
+    log.info("Model is contained in volume '%s'" % volume_name)
 
     # Dump the model
     filename = ".%s-kale-serve.model" % name
+    model_path = os.path.join(homedir, filename)
+    log.info("Dumping the model to '%s' ..." % model_path)
     # FIXME: Is it enough to use marshal utils?
     # FIXME: extend marshal.save to provide a `path` option?
     _bck = marshalutils.KALE_DATA_DIRECTORY
     marshalutils.KALE_DATA_DIRECTORY = homedir
     marshalutils.save(model, filename)
     marshalutils.KALE_DATA_DIRECTORY = _bck
-    model_path = os.path.join(homedir, filename)
+    log.info("Model saved successfully")
 
     task_info = rokutils.snapshot_pvc(volume_name,
                                       bucket=rokutils.SERVING_BUCKET,
