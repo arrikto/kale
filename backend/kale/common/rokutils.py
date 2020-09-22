@@ -27,6 +27,7 @@ from kale.common import podutils
 _client = None
 
 DEFAULT_BUCKET = "notebooks"
+SERVING_BUCKET = "serving"
 
 NOTEBOOK_SNAPSHOT_COMMIT_MESSAGE = """\
 This is a snapshot of notebook {} in namespace {}.

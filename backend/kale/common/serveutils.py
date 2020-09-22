@@ -12,12 +12,16 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+import os
 import yaml
+import time
 import logging
 
-from kale.common import podutils, k8sutils
 from kubernetes.client.rest import ApiException
+
 from kale.rpc.errors import RPCUnhandledError
+from kale.marshal import utils as marshalutils
+from kale.common import podutils, k8sutils, rokutils, utils
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +70,52 @@ CUSTOM_PREDICTOR_TEMPLATE = """\
 co_group = "serving.kubeflow.org"
 co_version = "v1alpha2"
 co_plural = "inferenceservices"
+
+
+def serve(name, model, predictor):
+    """Function to be run inside a pipeline step to serve a model.
+
+    Actions:
+    - Dump the model, to a path under a mounted PVC
+    - Snapshot the PVC
+    - Hydrate a new PVC from the new snapshot
+    - Submit an InferenceService CR
+    - Monitor the CR until it becomes ready
+    """
+    log.info("Starting serve procedure for model '%s'" % model)
+    # We should always have a "workspace" volume mounted under HOME
+    homedir = os.environ.get("HOME")
+    volume = podutils.get_volume_containing_path(homedir)
+    volume_name = volume[1].persistent_volume_claim.claim_name
+    log.info("Model is contained in volume '%s'" % volume_name)
+
+    # Dump the model
+    filename = ".%s-kale-serve.model" % name
+    model_path = os.path.join(homedir, filename)
+    log.info("Dumping the model to '%s' ..." % model_path)
+    # FIXME: Is it enough to use marshal utils?
+    # FIXME: extend marshal.save to provide a `path` option?
+    _bck = marshalutils.KALE_DATA_DIRECTORY
+    marshalutils.KALE_DATA_DIRECTORY = homedir
+    marshalutils.save(model, filename)
+    marshalutils.KALE_DATA_DIRECTORY = _bck
+    log.info("Model saved successfully")
+
+    task_info = rokutils.snapshot_pvc(volume_name,
+                                      bucket=rokutils.SERVING_BUCKET,
+                                      wait=True)
+    task = rokutils.get_task(task_info["task"]["id"],
+                             bucket=rokutils.SERVING_BUCKET)
+    new_pvc_name = "%s-%s-pvc" % (name, utils.random_string(5))
+    rokutils.hydrate_pvc_from_snapshot(task["result"]["event"]["object"],
+                                       task["result"]["event"]["version"],
+                                       new_pvc_name,
+                                       bucket=rokutils.SERVING_BUCKET)
+
+    # Create InferenceService
+    # FIXME: Add arguments for `custom` predictor
+    create_inference_service(name, predictor, new_pvc_name, model_path)
+    monitor_inference_service(name)
 
 
 def create_inference_service(name: str,
@@ -137,6 +187,40 @@ def _submit_inference_service(inference_service, namespace):
         raise RPCUnhandledError(message="Failed to launch InferenceService",
                                 details=str(e))
     log.info("Successfully created InferenceService: %s" % name)
+
+
+def monitor_inference_service(name):
+    """Wait for an InferenceService to become ready."""
+    host = None
+
+    def _is_ready(inference_service):
+        if not inference_service.get("status"):
+            return False
+        for condition in inference_service["status"]["conditions"]:
+            if (condition.get("type") == "Ready"
+                    and condition.get("status") == "True"):
+                return True
+        return False
+
+    while host is None:
+        log.info("Waiting for InferenceService '%s' to become ready..." % name)
+        try:
+            inf = get_inference_service(name)
+        except ApiException as e:
+            log.error("Failed to get InferenceService. ApiException: %s" % e)
+            return
+
+        if _is_ready(inf):
+            host = inf["status"]["default"]["predictor"]["host"]
+        time.sleep(3)
+
+    log.info("InferenceService %s is ready." % name)
+    # FIXME: Use custom endpoint for `custom` predictor
+    log.info("Get a prediction by sending a request to"
+             " http://cluster-local-gateway.istio-system/v1/models:predict"
+             "\n using the following headers:"
+             "\n     `'Host: %s'"
+             "\n     `Content-Type: application/json'" % host)
 
 
 def get_inference_service(name):
