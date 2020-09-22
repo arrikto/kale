@@ -41,6 +41,7 @@ import { IAnnotation } from '../components/AnnotationInput';
 import { ISelectOption } from '../components/Select';
 import { PageConfig } from '@jupyterlab/coreutils';
 import KFServingDialog, { KFServingFormData } from './KFServingDialog';
+import KFServingPipelineDialog from './KFServingPipelineDialog';
 
 const KALE_NOTEBOOK_METADATA_KEY = 'kubeflow_notebook';
 
@@ -77,6 +78,7 @@ interface IState {
   isEnabled: boolean;
   katibDialog: boolean;
   kfservingDialog: boolean;
+  kfservingPipelineDialog: boolean;
 }
 
 // Katib types: https://github.com/kubeflow/katib/blob/master/pkg/apis/controller/experiments/v1alpha3/experiment_types.go
@@ -129,6 +131,11 @@ const DefaultKatibMetadata: IKatibMetadata = {
   parallelTrialCount: 3,
 };
 
+export interface IServingMetadata {
+  model: string;
+  predictor: string;
+}
+
 export interface IVolumeMetadata {
   type: string;
   // name field will have different meaning based on the type:
@@ -159,6 +166,8 @@ export interface IKaleNotebookMetadata {
   autosnapshot: boolean;
   katib_run: boolean;
   katib_metadata?: IKatibMetadata;
+  serving_run: boolean;
+  serving_metadata?: IServingMetadata;
   steps_defaults?: string[];
 }
 
@@ -191,6 +200,7 @@ export const DefaultState: IState = {
     snapshot_volumes: false,
     autosnapshot: false,
     katib_run: false,
+    serving_run: false,
     steps_defaults: [],
   },
   runDeployment: false,
@@ -205,6 +215,7 @@ export const DefaultState: IState = {
   isEnabled: false,
   katibDialog: false,
   kfservingDialog: false,
+  kfservingPipelineDialog: false,
 };
 
 let deployIndex = 0;
@@ -307,6 +318,22 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
       },
     });
 
+  updateServingRun = () =>
+    this.setState({
+      metadata: {
+        ...this.state.metadata,
+        serving_run: !this.state.metadata.serving_run,
+      },
+    });
+
+  updateServingMetadata = (metadata: IServingMetadata) =>
+    this.setState({
+      metadata: {
+        ...this.state.metadata,
+        serving_metadata: metadata,
+      },
+    });
+
   updateVolumes = (
     volumes: IVolumeMetadata[],
     metadataVolumes: IVolumeMetadata[],
@@ -335,6 +362,12 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
 
   toggleKFServingDialog = () => {
     this.setState({ kfservingDialog: !this.state.kfservingDialog });
+  };
+
+  toggleKFServingPipelineDialog = () => {
+    this.setState({
+      kfservingPipelineDialog: !this.state.kfservingPipelineDialog,
+    });
   };
 
   // restore state to default values
@@ -844,6 +877,29 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
       </div>
     );
 
+    const serving_run_input = (
+      <div className="input-container">
+        <LightTooltip
+          title={'Enable this option to serve a model with KFServing'}
+          placement="top-start"
+          interactive={true}
+          TransitionComponent={Zoom}
+        >
+          <div className="toolbar">
+            <div className="switch-label">Serve a model in the pipeline</div>
+            <Switch
+              checked={this.state.metadata.serving_run}
+              onChange={_ => this.updateServingRun()}
+              color="primary"
+              name="enableServing"
+              className="material-switch"
+              inputProps={{ 'aria-label': 'primary checkbox' }}
+            />
+          </div>
+        </LightTooltip>
+      </div>
+    );
+
     const volsPanel = (
       <VolumesPanel
         volumes={this.state.volumes}
@@ -941,7 +997,22 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
                   onClick={this.toggleKFServingDialog}
                   style={{ marginLeft: '10px', marginTop: '0px' }}
                 >
-                  Run KFServing
+                  Run a Model Server
+                </Button>
+              </div>
+
+              {serving_run_input}
+              <div className="input-container add-button">
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="small"
+                  title="SetupKFServingJob"
+                  onClick={this.toggleKFServingPipelineDialog}
+                  disabled={!this.state.metadata.serving_run}
+                  style={{ marginLeft: '10px', marginTop: '0px' }}
+                >
+                  Choose a Model
                 </Button>
               </div>
             </div>
@@ -1005,6 +1076,12 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
             open={this.state.kfservingDialog}
             toggleDialog={this.toggleKFServingDialog}
             runInferenceService={this.runInferenceService}
+          />
+
+          <KFServingPipelineDialog
+            open={this.state.kfservingPipelineDialog}
+            toggleDialog={this.toggleKFServingPipelineDialog}
+            setKFServingMetadata={this.updateServingMetadata}
           />
         </div>
       </ThemeProvider>

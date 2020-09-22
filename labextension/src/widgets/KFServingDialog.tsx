@@ -42,7 +42,7 @@ interface KFServingDialog {
   runInferenceService: Function;
 }
 
-const PREDICTOR_VALUES = [
+export const PREDICTOR_VALUES = [
   { label: 'Tensorflow', value: 'tensorflow' },
   { label: 'PyTorch', value: 'pytorch' },
   { label: 'ONNX', value: 'onnx' },
