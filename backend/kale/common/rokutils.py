@@ -49,7 +49,7 @@ def get_rok_client():
     return _client
 
 
-def snapshot_pvc(pvc_name, bucket=DEFAULT_BUCKET):
+def snapshot_pvc(pvc_name, bucket=DEFAULT_BUCKET, wait=False):
     """Perform a snapshot over a PVC."""
     rok = get_rok_client()
     namespace = podutils.get_namespace()
@@ -64,7 +64,12 @@ def snapshot_pvc(pvc_name, bucket=DEFAULT_BUCKET):
               "commit_message": commit_message}
     # Create the bucket in case it does not exist
     podutils.create_rok_bucket(bucket, client=rok)
-    return rok.version_register(bucket, pvc_name, "dataset", params)
+    task_info = rok.version_register(bucket, pvc_name, "dataset", params)
+    task_id = task_info["task"]["id"]
+    log.info("Starting Rok snapshot with task id: %s", task_id)
+    if wait:
+        monitor_snapshot_task(task_id)
+    return task_info
 
 
 def snapshot_pod(bucket=DEFAULT_BUCKET):
@@ -114,6 +119,18 @@ def interactive_snapshot_and_get_volumes():
     task_id = snapshot_pod()["task"]["id"]
     log.info("Starting Rok snapshot with task id: %s", task_id)
 
+    task = monitor_snapshot_task(task_id)
+
+    return replace_cloned_volumes(
+        bucket=task["bucket"],
+        obj=task["result"]["event"]["object"],
+        version=task["result"]["event"]["version"],
+        # fixme: we should not call an rpc here, consider moving `list_volumes`
+        #  to a common utils lib.
+        volumes=nb.list_volumes(request=None))
+
+
+def monitor_snapshot_task(task_id):
     task = None
     status = None
     with IncrementalBar('Rok Task: ', max=100) as bar:
@@ -126,17 +143,10 @@ def interactive_snapshot_and_get_volumes():
     if status == "success":
         log.info("Successfully created Rok snapshot")
     elif status in ["error", "canceled"]:
-        raise RuntimeError("Rok task has failed (status: %s" % status)
+        raise RuntimeError("Rok task has failed (status: %s)" % status)
     else:
         raise RuntimeError("Unknown Rok task status: %s" % status)
-
-    return replace_cloned_volumes(
-        bucket=task["bucket"],
-        obj=task["result"]["event"]["object"],
-        version=task["result"]["event"]["version"],
-        # fixme: we should not call an rpc here, consider moving `list_volumes`
-        #  to a common utils lib.
-        volumes=nb.list_volumes(request=None))
+    return task
 
 
 def get_task(task_id, bucket=DEFAULT_BUCKET):
