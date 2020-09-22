@@ -22,19 +22,10 @@ from kubernetes.client.rest import ApiException
 from kale.rpc.errors import RPCUnhandledError
 from kale.marshal import utils as marshalutils
 from kale.common import podutils, k8sutils, rokutils, utils
+from kale.config.validators import ServingPredictorValidator
 
 log = logging.getLogger(__name__)
 
-
-PREDICTORS = [
-    "onnx"
-    "custom",
-    "triton",
-    "pytorch",
-    "sklearn",
-    "xgboost",
-    "tensorflow",
-]
 
 RAW_TEMPLATE = """\
 apiVersion: serving.kubeflow.org/v1alpha2
@@ -137,9 +128,9 @@ def create_inference_service(name: str,
     Returns (str): Path to the generated YAML
     """
 
-    if predictor not in PREDICTORS:
+    if predictor not in ServingPredictorValidator.enum:
         raise ValueError("Invalid predictor: %s. Choose one of %s"
-                         % (predictor, PREDICTORS))
+                         % (predictor, ServingPredictorValidator.enum))
 
     if predictor == "custom":
         if not image:

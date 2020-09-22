@@ -173,3 +173,9 @@ class K8sLabelsValidator(DictValidator):
 class VolumeTypeValidator(EnumValidator):
     """Validates the type of a Volume."""
     enum = ('pv', 'pvc', 'new_pvc', 'clone')
+
+
+class ServingPredictorValidator(EnumValidator):
+    """Validates the serving predictor type."""
+    enum = ("onnx", "custom", "triton", "pytorch", "sklearn", "xgboost",
+            "tensorflow")

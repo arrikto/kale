@@ -165,7 +165,8 @@ def get_volume_containing_path(path):
         # get vol with longest mount point (i.e. closest to input path)
         return sorted(vols, key=lambda k: len(k[mount_point]), reverse=True)[0]
     else:
-        raise RuntimeError("Input path is not under any volume mount point")
+        raise RuntimeError("Input path '%s' is not under any volume mount"
+                           " point" % path)
 
 
 def list_volumes():

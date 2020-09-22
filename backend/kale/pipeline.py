@@ -69,6 +69,23 @@ class KatibConfig(Config):
     parallelTrialCount = Field(type=int, default=3)
 
 
+class ServingConfig(Config):
+    """Validate serving configuration."""
+    model = Field(type=str, required=True)
+    predictor = Field(type=str, required=True,
+                      validators=[validators.ServingPredictorValidator])
+    image = Field(type=str)
+    port = Field(type=int)
+    endpoint = Field(type=str)
+
+    def _validate(self):
+        if self.predictor == "custom":
+            if not self.image or not self.port or self.endpoint:
+                raise ValueError("When using a 'custom' predictor you must"
+                                 " specify 'image', 'port' and 'endpoint'"
+                                 " as well.")
+
+
 class PipelineConfig(Config):
     """Main config class to validate the pipeline metadata."""
     pipeline_name = Field(type=str, required=True,
@@ -79,6 +96,8 @@ class PipelineConfig(Config):
     volumes = Field(type=list, items_config=VolumeConfig, default=[])
     katib_run = Field(type=bool, default=False)
     katib_metadata = Field(type=KatibConfig)
+    serving_run = Field(type=bool, default=False)
+    serving_metadata = Field(type=ServingConfig)
     abs_working_dir = Field(type=str, default="")
     marshal_volume = Field(type=bool, default=True)
     marshal_path = Field(type=str, default="/marshal")
