@@ -69,7 +69,7 @@ def snapshot_pvc(pvc_name, bucket=DEFAULT_BUCKET, wait=False):
     task_id = task_info["task"]["id"]
     log.info("Starting Rok snapshot with task id: %s", task_id)
     if wait:
-        monitor_snapshot_task(task_id)
+        monitor_snapshot_task(task_id, bucket=bucket)
     return task_info
 
 
@@ -114,13 +114,13 @@ def snapshot_notebook(bucket=DEFAULT_BUCKET, obj=None):
     return rok.version_register(bucket, obj, "jupyter", params)
 
 
-def interactive_snapshot_and_get_volumes():
+def interactive_snapshot_and_get_volumes(bucket=DEFAULT_BUCKET):
     """Take a Rok snapshot of the Pod with interactive progress."""
     log.info("Taking a snapshot of the Pod's volumes...")
-    task_id = snapshot_pod()["task"]["id"]
+    task_id = snapshot_pod(bucket=bucket)["task"]["id"]
     log.info("Starting Rok snapshot with task id: %s", task_id)
 
-    task = monitor_snapshot_task(task_id)
+    task = monitor_snapshot_task(task_id, bucket=bucket)
 
     return replace_cloned_volumes(
         bucket=task["bucket"],
@@ -131,12 +131,12 @@ def interactive_snapshot_and_get_volumes():
         volumes=nb.list_volumes(request=None))
 
 
-def monitor_snapshot_task(task_id):
+def monitor_snapshot_task(task_id, bucket=DEFAULT_BUCKET):
     task = None
     status = None
     with IncrementalBar('Rok Task: ', max=100) as bar:
         while status not in ["success", "error", "canceled"]:
-            task = get_task(task_id=task_id)
+            task = get_task(task_id=task_id, bucket=bucket)
             status = task["status"]
             bar.next(task["progress"] - bar.index)
             time.sleep(2)
