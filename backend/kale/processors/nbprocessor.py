@@ -207,13 +207,6 @@ class NotebookProcessor:
         pipeline_metrics = ast.parse_metrics_print_statements(
             pipeline_metrics_source)
 
-        # run static analysis over the source code
-        dependencies.dependencies_detection(
-            self.pipeline,
-            imports_and_functions=imports_and_functions
-        )
-        dependencies.assign_metrics(self.pipeline, pipeline_metrics)
-
         # FIXME: Move this to a base class Processor, to be executed by default
         #  after `to_pipeline`, so that it is agnostic to the type of
         #  processor.
@@ -229,6 +222,22 @@ class NotebookProcessor:
             # the final serving one.
             for step in leaf_steps:
                 self.pipeline.add_edge(step.name, _name)
+
+        # XXX: This part should not end up straight into a base Processor class
+        #  straight away, but we might have some interface that need to
+        #  be implemented by every processor.
+        #  We could have a multiple-step process governed by the to_pipeline
+        #  function:
+        #  1. convert to Pipeline object (based on processor)
+        #  2. postprocess based on Config (might have a base impl here)
+        #  3. compute dependencies (based on processor)
+        #  4. postprocess again (might have a base impl here)
+        # run static analysis over the source code
+        dependencies.dependencies_detection(
+            self.pipeline,
+            imports_and_functions=imports_and_functions
+        )
+        dependencies.assign_metrics(self.pipeline, pipeline_metrics)
 
         # if there are multiple DAG leaves, add an empty step at the end of the
         # pipeline for final snapshot
