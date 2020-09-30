@@ -183,12 +183,27 @@ def _submit_inference_service(inference_service, namespace):
 def monitor_inference_service(name):
     """Wait for an InferenceService to become ready."""
     host = None
+
+    def _is_ready(inference_service):
+        if not inference_service.get("status"):
+            return False
+        for condition in inference_service["status"]["conditions"]:
+            if (condition.get("type") == "Ready"
+                    and condition.get("status") == "True"):
+                return True
+        return False
+
     while host is None:
         log.info("Waiting for InferenceService '%s' to become ready..." % name)
-        inf = get_inference_service(name)
-        if inf:
-            host = inf.get("host")
-        time.sleep(5)
+        try:
+            inf = get_inference_service(name)
+        except ApiException as e:
+            log.error("Failed to get InferenceService. ApiException: %s" % e)
+            return
+
+        if _is_ready(inf):
+            host = inf["status"]["default"]["predictor"]["host"]
+        time.sleep(3)
 
     log.info("InferenceService %s is ready." % name)
     # FIXME: Use custom endpoint for `custom` predictor
