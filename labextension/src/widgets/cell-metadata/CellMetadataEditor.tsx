@@ -34,6 +34,7 @@ const CELL_TYPES = [
   { value: 'pipeline-metrics', label: 'Pipeline Metrics' },
   { value: 'step', label: 'Pipeline Step' },
   { value: 'skip', label: 'Skip Cell' },
+  { value: 'serve', label: 'Serve Model' },
 ];
 
 export const RESERVED_CELL_NAMES = [
@@ -42,6 +43,7 @@ export const RESERVED_CELL_NAMES = [
   'pipeline-parameters',
   'pipeline-metrics',
   'skip',
+  'serve',
 ];
 
 export const RESERVED_CELL_NAMES_HELP_TEXT: { [id: string]: string } = {
@@ -56,6 +58,7 @@ export const RESERVED_CELL_NAMES_HELP_TEXT: { [id: string]: string } = {
   'pipeline-metrics':
     'The variables in this cell will be transformed into pipeline metrics.',
   skip: 'This cell will be skipped and excluded from pipeline steps',
+  serve: 'The variables in this cell will be served at the end of the pipeline',
 };
 export const RESERVED_CELL_NAMES_CHIP_COLOR: { [id: string]: string } = {
   skip: 'a9a9a9',
@@ -63,6 +66,7 @@ export const RESERVED_CELL_NAMES_CHIP_COLOR: { [id: string]: string } = {
   'pipeline-metrics': '773d0d',
   imports: 'a32626',
   functions: 'a32626',
+  serve: '21b1ff',
 };
 
 const STEP_NAME_ERROR_MSG = `Step name must consist of lower case alphanumeric

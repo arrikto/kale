@@ -1001,20 +1001,20 @@ export class KubeflowKaleLeftPanel extends React.Component<IProps, IState> {
                 </Button>
               </div>
 
-              {serving_run_input}
-              <div className="input-container add-button">
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="small"
-                  title="SetupKFServingJob"
-                  onClick={this.toggleKFServingPipelineDialog}
-                  disabled={!this.state.metadata.serving_run}
-                  style={{ marginLeft: '10px', marginTop: '0px' }}
-                >
-                  Choose a Model
-                </Button>
-              </div>
+              {/*{serving_run_input}*/}
+              {/*<div className="input-container add-button">*/}
+              {/*  <Button*/}
+              {/*    variant="contained"*/}
+              {/*    color="primary"*/}
+              {/*    size="small"*/}
+              {/*    title="SetupKFServingJob"*/}
+              {/*    onClick={this.toggleKFServingPipelineDialog}*/}
+              {/*    disabled={!this.state.metadata.serving_run}*/}
+              {/*    style={{ marginLeft: '10px', marginTop: '0px' }}*/}
+              {/*  >*/}
+              {/*    Choose a Model*/}
+              {/*  </Button>*/}
+              {/*</div>*/}
             </div>
 
             <div className={this.state.isEnabled ? '' : 'hidden'}>

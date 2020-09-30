@@ -317,3 +317,24 @@ def parse_metrics_print_statements(code):
             raise ValueError(err_msg)
 
     return {re.sub("_", "-", v): v for v in variables}
+
+
+def parse_serve_source(code):
+    """Parse the code that defines the serving procedure."""
+    # NOTE: We are allowing just variable names
+    err_msg = ("Must provide just variables. Each variable should be the"
+               " instance of a model that will be served at the end of the"
+               " pipeline.")
+    # FIXME: Make this code common with `parse_metrics_print_statements`
+    #  Note that the default return value in case of empty input is different
+    code = code.strip()
+    # remove empty lines
+    if code == "":
+        return []
+    code = '\n'.join(list(filter(str.strip, code.splitlines())))
+    tree = ast.parse(code)
+    for block in tree.body:
+        if (not isinstance(block, ast.Expr)
+                or not isinstance(block.value, ast.Name)):
+            raise ValueError(err_msg)
+    return code.splitlines()

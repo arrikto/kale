@@ -46,6 +46,7 @@ LABEL_TAG = r'^label:%s:(.*)$' % K8S_ANNOTATION_KEY
 # Limits map to K8s limits, like CPU, Mem, GPU, ...
 # E.g.: limit:nvidia.com/gpu:2
 LIMITS_TAG = r'^limit:([_a-z-\.\/]+):([_a-zA-Z0-9\.]+)$'
+SERVE_TAG = r'^serve$'
 
 _TAGS_LANGUAGE = [SKIP_TAG,
                   IMPORT_TAG,
@@ -57,7 +58,8 @@ _TAGS_LANGUAGE = [SKIP_TAG,
                   PIPELINE_METRICS_TAG,
                   ANNOTATION_TAG,
                   LABEL_TAG,
-                  LIMITS_TAG]
+                  LIMITS_TAG,
+                  SERVE_TAG]
 # These tags are applied to every step of the pipeline
 _STEPS_DEFAULTS_LANGUAGE = [ANNOTATION_TAG,
                             LABEL_TAG,
@@ -69,7 +71,7 @@ _STEPS_DEFAULTS_LANGUAGE = [ANNOTATION_TAG,
 # will be the marshaled variables from a previous step.
 SERVING_STEP_SOURCE = """\
 from kale.common import serveutils as _kale_serveutils
-_kale_serveutils.serve('%s', %s, '%s')
+_kale_serveutils.serve('%s', %s)
 """
 
 
@@ -198,7 +200,8 @@ class NotebookProcessor:
         """Convert an annotated Notebook to a Pipeline object."""
         (pipeline_parameters_source,
          pipeline_metrics_source,
-         imports_and_functions) = self.parse_notebook()
+         imports_and_functions,
+         serve) = self.parse_notebook()
 
         self.parse_pipeline_parameters(pipeline_parameters_source)
         self.pipeline.set_volume_pipeline_parameters()
@@ -207,16 +210,21 @@ class NotebookProcessor:
         pipeline_metrics = ast.parse_metrics_print_statements(
             pipeline_metrics_source)
 
+        serve_models = ast.parse_serve_source(serve)
+        if len(serve_models) > 1:
+            raise NotImplementedError("Kale does not yet support serving"
+                                      " multiple models. Please tag just one"
+                                      " variable [model] for serving.")
+
         # FIXME: Move this to a base class Processor, to be executed by default
         #  after `to_pipeline`, so that it is agnostic to the type of
         #  processor.
         leaf_steps = self.pipeline.get_leaf_steps()
-        if self.config.serving_run:
+        if serve_models:
             _name = "serve"
             _code = (SERVING_STEP_SOURCE %
                      (self.config.pipeline_name,
-                      self.config.serving_metadata.model,
-                      self.config.serving_metadata.predictor))
+                      serve_models[0]))  # name of the variable
             self.pipeline.add_step(Step(name=_name, source=[_code]))
             # add a link from all the last steps of the pipeline to
             # the final serving one.
@@ -284,6 +292,8 @@ class NotebookProcessor:
         pipeline_parameters = list()
         # Variables that will become pipeline metrics
         pipeline_metrics = list()
+        # Model[s?] that will be serves in a pipeline step
+        serve = list()
 
         for c in self.notebook.cells:
             if c.cell_type != "code":
@@ -320,6 +330,10 @@ class NotebookProcessor:
                 continue
             if step_name == 'pipeline-metrics':
                 pipeline_metrics.append(c.source)
+                prev_step_name = step_name
+                continue
+            if step_name == 'serve':
+                serve.append(c.source)
                 prev_step_name = step_name
                 continue
 
@@ -377,13 +391,12 @@ class NotebookProcessor:
         for step in self.pipeline.steps:
             step.source = imports_block + functions_block + step.source
 
-        # merge together pipeline parameters
-        pipeline_parameters = '\n'.join(pipeline_parameters)
-        # merge together pipeline metrics
+        serve = '\n'.join(serve)
         pipeline_metrics = '\n'.join(pipeline_metrics)
-
+        pipeline_parameters = '\n'.join(pipeline_parameters)
         imports_and_functions = "\n".join(imports_block + functions_block)
-        return pipeline_parameters, pipeline_metrics, imports_and_functions
+        return (pipeline_parameters, pipeline_metrics, imports_and_functions,
+                serve)
 
     def parse_cell_metadata(self, metadata):
         """Parse a notebook's cell's metadata field.
@@ -434,7 +447,7 @@ class NotebookProcessor:
             #  - functions: same as imports, but the corresponding code is
             #       placed **after** `imports`
             special_tags = ['skip', 'pipeline-parameters', 'pipeline-metrics',
-                            'imports', 'functions']
+                            'imports', 'functions', 'serve']
             if t in special_tags:
                 parsed_tags['step_names'] = [t]
                 return parsed_tags
