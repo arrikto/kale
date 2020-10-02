@@ -72,7 +72,27 @@ co_version = "v1alpha2"
 co_plural = "inferenceservices"
 
 
-def serve(name, model, predictor):
+class KFServing:
+
+    def __init__(self, name, spec):
+        self.name = name
+        self.spec = spec
+
+    def __repr__(self):
+        return self.spec
+
+    def delete(self):
+        log.info("Deleting InferenceServer named '%s'..." % self.name)
+        k8s_co_client = k8sutils.get_k8s_co_client()
+        namespace = podutils.get_namespace()
+        k8s_co_client.delete_namespaced_custom_object(co_group, co_version,
+                                                      namespace, co_plural,
+                                                      self.name)
+        log.info("Successfully deleted InferenceService.")
+        del self
+
+
+def serve(name, model, predictor=None, wait=False):
     """Function to be run inside a pipeline step to serve a model.
 
     Actions:
@@ -114,8 +134,41 @@ def serve(name, model, predictor):
 
     # Create InferenceService
     # FIXME: Add arguments for `custom` predictor
-    create_inference_service(name, predictor, new_pvc_name, model_path)
-    monitor_inference_service(name)
+    if not predictor:
+        predictor = _infer_predictor_type(model)
+    yaml_path = create_inference_service(name, predictor, new_pvc_name,
+                                         model_path)
+    if wait:
+        monitor_inference_service(name)
+    return KFServing(name=name, spec=open(yaml_path, "r").read())
+
+
+def _infer_predictor_type(model):
+    # FIXME: This function should go away in favour for some smarter way of
+    #  getting the type (in a natural language form) of the variable from the
+    #  marshal module (refactor into classes, one class for each backend)
+    # FIXME: Refactor the value side of the dictionary with an enumerator,
+    #  especially if we remove the use of `ServingPredictorValidator`
+    _types = {
+        r"tensorflow.python.keras.*": "tensorflow",
+        r"keras.*": "tensorflow",
+        r"torch.*": "pytorch",
+    }
+    # FIXME: The following code is in common with TypeDispatcher
+    import re
+    _type = re.sub(r"'>$", "",
+                   re.sub(r"^<class '", "",
+                          str(type(model))))
+    matches = [predictor for type_pattern, predictor in _types.items()
+               if re.match(type_pattern, _type)]
+    if not matches:
+        raise NotImplementedError("Kale does not yet support creating"
+                                  " InferenceServices for objects of type %s."
+                                  % _type)
+    if len(matches) > 1:
+        raise RuntimeError("The type of the model ('%s') has machined multiple"
+                           " types: %s" % (_type, matches))
+    return matches[0]
 
 
 def create_inference_service(name: str,
