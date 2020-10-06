@@ -15,7 +15,11 @@
 import os
 import yaml
 import time
+import json
 import logging
+import requests
+
+from typing import Any, Dict
 
 from kubernetes.client.rest import ApiException
 
@@ -48,38 +52,59 @@ metadata:
 spec:
   default:
     predictor:
-{predictor_template}
 """
 
 PVC_PREDICTOR_TEMPLATE = """\
-      {predictor}:
-        storageUri: "pvc://{pvc_name}{model_path}"
+{predictor}:
+  storageUri: "pvc://{pvc_name}{model_path}"
 """
 
 CUSTOM_PREDICTOR_TEMPLATE = """\
-      container:
-        image: {image}
-        name: kfserving-container
-        ports:
-          - containerPort: {port}
-        env:
-          - name: STORAGE_URI
-            value: "pvc://{pvc_name}{model_path}"
+container:
+   image: {image}
+   name: kfserving-container
+   ports:
+     - containerPort: {port}
+   env:
+     - name: STORAGE_URI
+       value: "pvc://{pvc_name}{model_path}"
 """
 
 co_group = "serving.kubeflow.org"
 co_version = "v1alpha2"
 co_plural = "inferenceservices"
 
+_types_map = {
+    r"tensorflow.python.keras.*": "tensorflow",
+    r"keras.*": "tensorflow",
+    r"torch.*": "pytorch",
+}
 
-class KFServing:
+_extensions_map = {
+    r"tensorflow.python.keras.*": "tfkeras",
+    r"keras.*": "keras",
+    r"torch.*": "pt",
+}
 
-    def __init__(self, name, spec):
+
+class KFServing(object):
+
+    def __init__(self, name: str, spec: str):
         self.name = name
         self.spec = spec
 
     def __repr__(self):
-        return self.spec
+        if utils.is_ipython():
+            import IPython
+            html = ('InferenceService %s serving requests at %s<br>'
+                    'View model <a href="/models/details/%s/%s"'
+                    ' target="_blank" >here</a>'
+                    % (self.name,
+                       get_inference_service_default_host(self.name),
+                       podutils.get_namespace(),
+                       self.name))
+            IPython.display.display(IPython.display.HTML(html))
+        return super(KFServing, self).__repr__()
 
     def delete(self):
         log.info("Deleting InferenceServer named '%s'..." % self.name)
@@ -91,8 +116,36 @@ class KFServing:
         log.info("Successfully deleted InferenceService.")
         del self
 
+    def predict(self, data: Dict, tensor=False):
+        """Hit the InferenceService endpoint.
 
-def serve(name, model, predictor=None, wait=False):
+        tensor: when set to True, return the result loaded in tensor objects,
+                based on the framework being used.
+        """
+        log.info("Sending a request to the InferenceService...")
+        log.info("Getting InferenceService predictor's host...")
+        host = get_inference_service_default_host(self.name)
+        headers = {"content-type": "application/json", "Host": host}
+        response = requests.post(
+            "http://cluster-local-gateway.istio-system/v1/models/"
+            "%s:predict" % self.name, data=data,
+            headers=headers)
+        if response.status_code == 200:
+            log.info("Request submitted successfully!")
+            log.info("Response: %s" % (response.text[:75] +
+                                       " ..... " +
+                                       response.text[len(response.text)-75:]))
+            return json.loads(response.text)
+        else:
+            log.error("The request failed with status code %s" %
+                      response.status_code)
+            return response
+
+
+def serve(model: Any,
+          name: str = None,
+          wait: bool = True,
+          predictor: str = None):
     """Function to be run inside a pipeline step to serve a model.
 
     Actions:
@@ -103,6 +156,16 @@ def serve(name, model, predictor=None, wait=False):
     - Monitor the CR until it becomes ready
     """
     log.info("Starting serve procedure for model '%s'" % model)
+    if name is None:
+        name = "%s-%s" % (podutils.get_pod_name(), utils.random_string(5))
+    # FIXME: Add arguments for `custom` predictor
+    _predictor = _map_from_predictor_type(model, _types_map)
+    _extension = _map_from_predictor_type(model, _extensions_map)
+    if predictor and predictor != _predictor:
+        raise RuntimeError("Trying to create an InferenceService with"
+                           " predictor of type '%s' but the model is of type"
+                           " '%s'" % (predictor, _predictor))
+    predictor = _predictor  # assign in case predictor is None
     # We should always have a "workspace" volume mounted under HOME
     homedir = os.environ.get("HOME")
     volume = podutils.get_volume_containing_path(homedir)
@@ -110,9 +173,14 @@ def serve(name, model, predictor=None, wait=False):
     log.info("Model is contained in volume '%s'" % volume_name)
 
     # Dump the model
-    filename = ".%s-kale-serve.model" % name
-    model_path = os.path.join(homedir, filename)
-    log.info("Dumping the model to '%s' ..." % model_path)
+    filename = "%s-kale-serve.model" % name
+
+    # FIXME: Special case here, should we have a general way to handle special
+    #  cases based on the predictor type?
+    if _extension == "tensorflow":
+        filename = os.path.join("1", filename)
+
+    log.info("Dumping the model to '%s' ..." % os.path.join(homedir, filename))
     # FIXME: Is it enough to use marshal utils?
     # FIXME: extend marshal.save to provide a `path` option?
     _bck = marshalutils.KALE_DATA_DIRECTORY
@@ -120,6 +188,10 @@ def serve(name, model, predictor=None, wait=False):
     marshalutils.save(model, filename)
     marshalutils.KALE_DATA_DIRECTORY = _bck
     log.info("Model saved successfully")
+    # FIXME: The marshal module currently does not return the saved path (it
+    #   adds a file extension). We should refactor the marshal module to have
+    #   a backend-agnostic way to return this.
+    filename = filename + "." + _extension
 
     task_info = rokutils.snapshot_pvc(volume_name,
                                       bucket=rokutils.SERVING_BUCKET,
@@ -133,9 +205,7 @@ def serve(name, model, predictor=None, wait=False):
                                        bucket=rokutils.SERVING_BUCKET)
 
     # Create InferenceService
-    # FIXME: Add arguments for `custom` predictor
-    if not predictor:
-        predictor = _infer_predictor_type(model)
+    model_path = filename if filename.startswith("/") else "/" + filename
     yaml_path = create_inference_service(name, predictor, new_pvc_name,
                                          model_path)
     if wait:
@@ -143,23 +213,17 @@ def serve(name, model, predictor=None, wait=False):
     return KFServing(name=name, spec=open(yaml_path, "r").read())
 
 
-def _infer_predictor_type(model):
+def _map_from_predictor_type(model: Any, map: Dict):
     # FIXME: This function should go away in favour for some smarter way of
     #  getting the type (in a natural language form) of the variable from the
     #  marshal module (refactor into classes, one class for each backend)
-    # FIXME: Refactor the value side of the dictionary with an enumerator,
-    #  especially if we remove the use of `ServingPredictorValidator`
-    _types = {
-        r"tensorflow.python.keras.*": "tensorflow",
-        r"keras.*": "tensorflow",
-        r"torch.*": "pytorch",
-    }
+
     # FIXME: The following code is in common with TypeDispatcher
     import re
     _type = re.sub(r"'>$", "",
                    re.sub(r"^<class '", "",
                           str(type(model))))
-    matches = [predictor for type_pattern, predictor in _types.items()
+    matches = [predictor for type_pattern, predictor in map.items()
                if re.match(type_pattern, _type)]
     if not matches:
         raise NotImplementedError("Kale does not yet support creating"
@@ -205,28 +269,42 @@ def create_inference_service(name: str,
         if not port:
             raise ValueError("You must specify a port when using a custom"
                              " predictor.")
-        _tmpl = CUSTOM_PREDICTOR_TEMPLATE.format(image=image, port=port,
-                                                 pvc_name=pvc_name,
-                                                 model_path=model_path)
+        predictor_spec = CUSTOM_PREDICTOR_TEMPLATE.format(image=image,
+                                                          port=port,
+                                                          pvc_name=pvc_name,
+                                                          model_path=model_path)
     else:
-        _tmpl = PVC_PREDICTOR_TEMPLATE.format(predictor=predictor,
-                                              pvc_name=pvc_name,
-                                              model_path=model_path)
+        predictor_spec = PVC_PREDICTOR_TEMPLATE.format(predictor=predictor,
+                                                       pvc_name=pvc_name,
+                                                       model_path=model_path)
 
-    raw_template = RAW_TEMPLATE.format(name=name, predictor_template=_tmpl)
+    infs_spec = yaml.load(RAW_TEMPLATE.format(name=name))
+    yaml_predictor_spec = yaml.load(predictor_spec)
+    yaml_predictor_spec["runtimeVersion"] = _get_runtime_version(predictor)
+    infs_spec["spec"]["default"]["predictor"] = yaml_predictor_spec
 
     definition_path = "%s.kfserving.yaml" % name
     log.info("Saving InferenceService definition at %s" % definition_path)
     with open(definition_path, "w") as yaml_file:
-        yaml_file.write(raw_template)
+        yaml_file.write(yaml.dump(infs_spec))
 
     if submit:
-        json_obj = yaml.load(raw_template, Loader=yaml.FullLoader)
-        _submit_inference_service(json_obj, podutils.get_namespace())
+        _submit_inference_service(infs_spec, podutils.get_namespace())
     return definition_path
 
 
-def _submit_inference_service(inference_service, namespace):
+def _get_runtime_version(predictor: str):
+    try:
+        if predictor == "tensorflow":
+            import tensorflow
+            return tensorflow.__version__
+    except ImportError:
+        pass
+    return None
+
+
+
+def _submit_inference_service(inference_service: Dict, namespace: str):
     k8s_co_client = k8sutils.get_k8s_co_client()
 
     name = inference_service["metadata"]["name"]
@@ -242,7 +320,7 @@ def _submit_inference_service(inference_service, namespace):
     log.info("Successfully created InferenceService: %s" % name)
 
 
-def monitor_inference_service(name):
+def monitor_inference_service(name: str):
     """Wait for an InferenceService to become ready."""
     host = None
 
@@ -276,9 +354,15 @@ def monitor_inference_service(name):
              "\n     `Content-Type: application/json'" % host)
 
 
-def get_inference_service(name):
+def get_inference_service(name: str):
     """Get an InferenceService object."""
     k8s_co_client = k8sutils.get_k8s_co_client()
     ns = podutils.get_namespace()
     return k8s_co_client.get_namespaced_custom_object(co_group, co_version,
                                                       ns, co_plural, name)
+
+
+def get_inference_service_default_host(name: str):
+    """Get the hostname of the default predictor."""
+    inference_service = get_inference_service(name)
+    return inference_service["status"]["default"]["predictor"]["host"]
